@@ -31,10 +31,10 @@ A Python-based analysis toolkit for simulating and analyzing the fair value of t
 |--------------|---------------|---------|------------------------|
 | Suited A/J | Suited A/J | Major Progressive | 117,647 |
 | Suited A/J | Off-suited A/J | Minor Progressive | 39,683 |
-| Suited A/J | - | 350 CHF | - |
-| Same color A/J | - | 250 CHF | - |
-| Any A/J | - | 100 CHF | - |
-| Blackjack | - | 25 CHF | - |
+| Suited A/J | - | 350 CHF | 352 |
+| Same color A/J | - | 250 CHF | 353 |
+| Any A/J | - | 100 CHF | 178 |
+| Blackjack | - | 25 CHF | 29 |
 
 ## Simulation Features
 
