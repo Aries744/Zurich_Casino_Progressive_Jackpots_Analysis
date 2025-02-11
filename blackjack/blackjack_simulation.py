@@ -1,9 +1,12 @@
 import random
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import List, Set, Tuple
+from typing import List, Set, Tuple, Dict
 import csv
 from datetime import datetime
+import sys
+import os
+import numpy as np
 
 @dataclass(frozen=True)
 class Card:
@@ -75,15 +78,19 @@ def generate_deck_and_blackjacks(num_decks=6):
     
     return cards, red_suits, suited_aj_by_suit
 
-def simulate_hands(num_hands: int) -> dict:
+def simulate_hands(num_hands: int, start_hand: int = 0, last_major_hit: int = 0, last_minor_hit: int = 0) -> tuple[dict, dict]:
     results = defaultdict(int)
+    wait_times = {
+        'major_prog': [],
+        'minor_prog': []
+    }
     
     # Generate deck and pre-calculate sets
     deck, red_suits, suited_aj_by_suit = generate_deck_and_blackjacks(6)
     
-    for i in range(num_hands):
-        if i % 1_000_000 == 0:  # Print progress less frequently
-            print(f"Progress: {i/num_hands*100:.1f}% complete...")
+    for i in range(start_hand, start_hand + num_hands):
+        if (i - start_hand) % 1_000_000 == 0:  # Print progress less frequently
+            print(f"Progress: {(i - start_hand)/num_hands*100:.1f}% complete...")
             
         # Shuffle and deal
         random.shuffle(deck)
@@ -104,8 +111,14 @@ def simulate_hands(num_hands: int) -> dict:
             
             if player_suited_aj and dealer_suited_aj:
                 results['major_prog'] += 1
+                if last_major_hit > 0:
+                    wait_times['major_prog'].append(i - last_major_hit)
+                last_major_hit = i
             elif player_suited_aj and 'J' in dealer_ranks and 'A' in dealer_ranks and not dealer_suited_aj:
                 results['minor_prog'] += 1
+                if last_minor_hit > 0:
+                    wait_times['minor_prog'].append(i - last_minor_hit)
+                last_minor_hit = i
         elif player_bj:
             if 'J' in player_ranks and 'A' in player_ranks:
                 player_suits = {card.suit for card in player_hand}
@@ -119,7 +132,7 @@ def simulate_hands(num_hands: int) -> dict:
                 results['other_bj'] += 1
     
     results['total_hands'] = num_hands
-    return results
+    return results, wait_times, last_major_hit, last_minor_hit
 
 def calculate_fair_payouts(results: dict) -> tuple:
     """Calculate fair progressive payouts for 5 CHF bet."""
@@ -160,34 +173,47 @@ def calculate_fair_payouts(results: dict) -> tuple:
     return major_payout, minor_payout
 
 def main():
-    NUM_HANDS = 100_000_000  # 100 million hands
-    CHUNK_SIZE = 10_000_000    # Process in chunks of 10M for memory efficiency
+    num_hands = 10_000_000  # 10 million hands
+    chunk_size = 100_000  # Increased for more efficient processing
     
-    print(f"Running simulation for {NUM_HANDS:,} hands...")
+    print(f"Running simulation for {num_hands:,} hands...")
     
     # Initialize aggregate results
     total_results = defaultdict(int)
     chunk_results = []
+    all_wait_times = {
+        'major_prog': [],
+        'minor_prog': []
+    }
+    
+    # Track last hits across chunks
+    last_major_hit = 0
+    last_minor_hit = 0
     
     try:
         # Process in chunks
-        num_chunks = NUM_HANDS // CHUNK_SIZE
+        num_chunks = num_hands // chunk_size
         for chunk in range(num_chunks):
             try:
                 print(f"\nProcessing chunk {chunk + 1}/{num_chunks}")
-                print(f"Total hands processed so far: {chunk * CHUNK_SIZE:,}")
-                print(f"Approximate memory usage: {len(chunk_results) * 8 * 7 / 1024 / 1024:.2f} MB")
+                print(f"Total hands processed so far: {chunk * chunk_size:,}")
                 
-                results = simulate_hands(CHUNK_SIZE)
+                start_hand = chunk * chunk_size
+                results, wait_times, last_major_hit, last_minor_hit = simulate_hands(
+                    chunk_size, start_hand, last_major_hit, last_minor_hit
+                )
                 
                 # Store chunk results
                 results['chunk'] = chunk + 1
                 chunk_results.append(results.copy())
                 
-                # Aggregate results
+                # Aggregate results and wait times
                 for key in results:
                     if key != 'chunk' and key != 'total_hands':
                         total_results[key] += results[key]
+                
+                all_wait_times['major_prog'].extend(wait_times['major_prog'])
+                all_wait_times['minor_prog'].extend(wait_times['minor_prog'])
                 
                 # Print intermediate results every 10 chunks
                 if (chunk + 1) % 10 == 0:
@@ -197,84 +223,120 @@ def main():
                     
             except Exception as e:
                 print(f"\nError processing chunk {chunk + 1}: {str(e)}")
-                raise  # Re-raise the exception after logging
+                raise
         
-        total_results['total_hands'] = NUM_HANDS
+        total_results['total_hands'] = num_hands
         
-        # Calculate total bet and payouts
-        total_bet = NUM_HANDS * 5
-        suited_aj_paid = total_results['suited_aj'] * 350
-        colored_aj_paid = total_results['colored_aj'] * 250
-        mixed_aj_paid = total_results['mixed_aj'] * 100
-        other_bj_paid = total_results['other_bj'] * 25
+        # Calculate wait time statistics
+        major_wait_stats = {
+            'min': min(all_wait_times['major_prog']) if all_wait_times['major_prog'] else 0,
+            'max': max(all_wait_times['major_prog']) if all_wait_times['major_prog'] else 0,
+            'mean': np.mean(all_wait_times['major_prog']) if all_wait_times['major_prog'] else 0,
+            'std': np.std(all_wait_times['major_prog']) if all_wait_times['major_prog'] else 0,
+            'percentiles': np.percentile(all_wait_times['major_prog'], [25, 50, 75, 90, 95, 99]) if all_wait_times['major_prog'] else [0]*6
+        }
         
-        print("\nFinal Results:")
-        print(f"Total Hands: {total_results['total_hands']:,}")
-        print(f"\nWin Frequencies:")
-        print(f"Major Progressive: {total_results['major_prog']:,} hits (1 in {NUM_HANDS/total_results['major_prog']:,.0f})")
-        print(f"Minor Progressive: {total_results['minor_prog']:,} hits (1 in {NUM_HANDS/total_results['minor_prog']:,.0f})")
-        print(f"Suited A/J: {total_results['suited_aj']:,} hits (1 in {NUM_HANDS/total_results['suited_aj']:,.0f})")
-        print(f"Colored A/J: {total_results['colored_aj']:,} hits (1 in {NUM_HANDS/total_results['colored_aj']:,.0f})")
-        print(f"Mixed A/J: {total_results['mixed_aj']:,} hits (1 in {NUM_HANDS/total_results['mixed_aj']:,.0f})")
-        print(f"Other BJ: {total_results['other_bj']:,} hits (1 in {NUM_HANDS/total_results['other_bj']:,.0f})")
-        
-        total_fixed = suited_aj_paid + colored_aj_paid + mixed_aj_paid + other_bj_paid
-        remaining = total_bet - total_fixed
+        minor_wait_stats = {
+            'min': min(all_wait_times['minor_prog']) if all_wait_times['minor_prog'] else 0,
+            'max': max(all_wait_times['minor_prog']) if all_wait_times['minor_prog'] else 0,
+            'mean': np.mean(all_wait_times['minor_prog']) if all_wait_times['minor_prog'] else 0,
+            'std': np.std(all_wait_times['minor_prog']) if all_wait_times['minor_prog'] else 0,
+            'percentiles': np.percentile(all_wait_times['minor_prog'], [25, 50, 75, 90, 95, 99]) if all_wait_times['minor_prog'] else [0]*6
+        }
         
         # Calculate fair payouts
         major_payout, minor_payout = calculate_fair_payouts(total_results)
         
         # Save results to CSV
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"blackjack_results_{timestamp}.csv"
+        filename = os.path.join(os.path.dirname(__file__), f"blackjack_results_{timestamp}.csv")
         
         with open(filename, 'w', newline='') as f:
             writer = csv.writer(f)
             
             # Write summary
             writer.writerow(['Summary Statistics'])
-            writer.writerow(['Total Hands', NUM_HANDS])
-            writer.writerow(['Total Bet', total_bet])
+            writer.writerow(['Total Hands', num_hands])
+            writer.writerow(['Total Bet', num_hands * 5])
+            writer.writerow([''])
+            
+            # Write payout analysis
+            writer.writerow(['Payout Information'])
+            writer.writerow(['Fixed Payouts'])
+            suited_aj_payout = total_results['suited_aj'] * 350
+            colored_aj_payout = total_results['colored_aj'] * 250
+            mixed_aj_payout = total_results['mixed_aj'] * 100
+            other_bj_payout = total_results['other_bj'] * 25
+            total_fixed = suited_aj_payout + colored_aj_payout + mixed_aj_payout + other_bj_payout
+            
+            writer.writerow(['Suited A/J (350 CHF)', f"{suited_aj_payout:,.0f}"])
+            writer.writerow(['Colored A/J (250 CHF)', f"{colored_aj_payout:,.0f}"])
+            writer.writerow(['Mixed A/J (100 CHF)', f"{mixed_aj_payout:,.0f}"])
+            writer.writerow(['Other BJ (25 CHF)', f"{other_bj_payout:,.0f}"])
+            writer.writerow(['Total Fixed Payouts', f"{total_fixed:,.0f}"])
+            writer.writerow([''])
+            
+            writer.writerow(['Progressive Information'])
+            remaining = num_hands * 5 - total_fixed
+            writer.writerow(['Remaining to Cover', f"{remaining:,.0f}"])
+            writer.writerow(['Major/Minor Hit Ratio', f"{total_results['minor_prog']/total_results['major_prog']:.4f}"])
+            writer.writerow(['Major Progressive Payout', f"CHF {major_payout:,.2f}"])
+            writer.writerow(['Minor Progressive Payout', f"CHF {minor_payout:,.2f}"])
             writer.writerow([''])
             
             # Write frequencies
             writer.writerow(['Win Type', 'Hits', 'Frequency', '1 in X hands'])
             writer.writerow(['Major Progressive', total_results['major_prog'], 
-                            f"{total_results['major_prog']/NUM_HANDS*100:.6f}%",
-                            f"1 in {NUM_HANDS/total_results['major_prog']:,.0f}"])
+                            f"{total_results['major_prog']/num_hands*100:.6f}%",
+                            f"1 in {num_hands/total_results['major_prog']:,.0f}"])
             writer.writerow(['Minor Progressive', total_results['minor_prog'],
-                            f"{total_results['minor_prog']/NUM_HANDS*100:.6f}%",
-                            f"1 in {NUM_HANDS/total_results['minor_prog']:,.0f}"])
+                            f"{total_results['minor_prog']/num_hands*100:.6f}%",
+                            f"1 in {num_hands/total_results['minor_prog']:,.0f}"])
             writer.writerow(['Suited A/J', total_results['suited_aj'],
-                            f"{total_results['suited_aj']/NUM_HANDS*100:.6f}%",
-                            f"1 in {NUM_HANDS/total_results['suited_aj']:,.0f}"])
+                            f"{total_results['suited_aj']/num_hands*100:.6f}%",
+                            f"1 in {num_hands/total_results['suited_aj']:,.0f}"])
             writer.writerow(['Colored A/J', total_results['colored_aj'],
-                            f"{total_results['colored_aj']/NUM_HANDS*100:.6f}%",
-                            f"1 in {NUM_HANDS/total_results['colored_aj']:,.0f}"])
+                            f"{total_results['colored_aj']/num_hands*100:.6f}%",
+                            f"1 in {num_hands/total_results['colored_aj']:,.0f}"])
             writer.writerow(['Mixed A/J', total_results['mixed_aj'],
-                            f"{total_results['mixed_aj']/NUM_HANDS*100:.6f}%",
-                            f"1 in {NUM_HANDS/total_results['mixed_aj']:,.0f}"])
+                            f"{total_results['mixed_aj']/num_hands*100:.6f}%",
+                            f"1 in {num_hands/total_results['mixed_aj']:,.0f}"])
             writer.writerow(['Other BJ', total_results['other_bj'],
-                            f"{total_results['other_bj']/NUM_HANDS*100:.6f}%",
-                            f"1 in {NUM_HANDS/total_results['other_bj']:,.0f}"])
+                            f"{total_results['other_bj']/num_hands*100:.6f}%",
+                            f"1 in {num_hands/total_results['other_bj']:,.0f}"])
             writer.writerow([''])
             
-            # Write payout information
-            writer.writerow(['Payout Information'])
-            writer.writerow(['Fixed Payouts'])
-            writer.writerow(['Suited A/J (350 CHF)', suited_aj_paid])
-            writer.writerow(['Colored A/J (250 CHF)', colored_aj_paid])
-            writer.writerow(['Mixed A/J (100 CHF)', mixed_aj_paid])
-            writer.writerow(['Other BJ (25 CHF)', other_bj_paid])
-            writer.writerow(['Total Fixed Payouts', total_fixed])
+            # Write wait time statistics
+            writer.writerow(['Wait Time Statistics'])
+            writer.writerow(['Progressive', 'Min Wait', 'Max Wait', 'Mean Wait', 'Std Dev', '25th', '50th', '75th', '90th', '95th', '99th'])
+            writer.writerow(['Major Progressive', 
+                           f"{major_wait_stats['min']:,}",
+                           f"{major_wait_stats['max']:,}",
+                           f"{major_wait_stats['mean']:,.1f}",
+                           f"{major_wait_stats['std']:,.1f}",
+                           f"{major_wait_stats['percentiles'][0]:,.0f}",
+                           f"{major_wait_stats['percentiles'][1]:,.0f}",
+                           f"{major_wait_stats['percentiles'][2]:,.0f}",
+                           f"{major_wait_stats['percentiles'][3]:,.0f}",
+                           f"{major_wait_stats['percentiles'][4]:,.0f}",
+                           f"{major_wait_stats['percentiles'][5]:,.0f}"])
+            writer.writerow(['Minor Progressive',
+                           f"{minor_wait_stats['min']:,}",
+                           f"{minor_wait_stats['max']:,}",
+                           f"{minor_wait_stats['mean']:,.1f}",
+                           f"{minor_wait_stats['std']:,.1f}",
+                           f"{minor_wait_stats['percentiles'][0]:,.0f}",
+                           f"{minor_wait_stats['percentiles'][1]:,.0f}",
+                           f"{minor_wait_stats['percentiles'][2]:,.0f}",
+                           f"{minor_wait_stats['percentiles'][3]:,.0f}",
+                           f"{minor_wait_stats['percentiles'][4]:,.0f}",
+                           f"{minor_wait_stats['percentiles'][5]:,.0f}"])
             writer.writerow([''])
             
-            # Write progressive information
-            writer.writerow(['Progressive Information'])
-            writer.writerow(['Remaining to Cover', remaining])
-            writer.writerow(['Major/Minor Hit Ratio', f"{total_results['minor_prog']/total_results['major_prog']:.4f}"])
-            writer.writerow(['Major Progressive Payout', f"{major_payout:,.2f}"])
-            writer.writerow(['Minor Progressive Payout', f"{minor_payout:,.2f}"])
+            # Write wait times log
+            writer.writerow(['Wait Times Log'])
+            writer.writerow(['Major Progressive'] + [str(x) for x in all_wait_times['major_prog']])
+            writer.writerow(['Minor Progressive'] + [str(x) for x in all_wait_times['minor_prog']])
             writer.writerow([''])
             
             # Write chunk data
@@ -294,7 +356,7 @@ def main():
         print(f"\nResults saved to {filename}")
     except Exception as e:
         print(f"\nError in main(): {str(e)}")
-        raise  # Re-raise the exception after logging
+        raise
 
 if __name__ == "__main__":
     main() 

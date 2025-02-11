@@ -1,6 +1,6 @@
 # Casino Progressives Analysis
 
-A Python-based analysis toolkit for simulating and analyzing the fair value of the progressive jackpots in Zurich Casino table games. This project simulates and analyzes the [Swiss Casinos Royal Jackpot](https://www.swisscasinos.ch/en/royal-jackpot) side bets for Ultimate Texas Hold'em and Blackjack to determine at which jackpot values the 5 CHF side bet becomes profitable. Both games are simulated with 100 million hands to ensure statistical significance.
+A Python-based analysis toolkit for simulating and analyzing the fair value of the progressive jackpots in Zurich Casino table games. This project simulates and analyzes the [Swiss Casinos Royal Jackpot](https://www.swisscasinos.ch/en/royal-jackpot) side bets for Ultimate Texas Hold'em and Blackjack to determine at which jackpot values the 5 CHF side bet becomes profitable. Both games are simulated with 10 million hands to ensure statistical significance.
 
 ## Royal Jackpot Details
 
@@ -11,13 +11,13 @@ A Python-based analysis toolkit for simulating and analyzing the fair value of t
 - Base game bet required
 
 **Payout Table:**
-| Hand played | Payout | 
-|-------------|--------|
-| Royal flush | 100% of jackpot |
-| Community royal | 5,000 CHF |
-| Straight flush | 1,500 CHF |
-| Four-of-a-kind | 500 CHF |
-| Full house | 50 CHF |
+| Hand played | Payout | Frequency (1 in X hands) |
+|-------------|--------|------------------------|
+| Royal flush | Progressive | 1,111,111 |
+| Community royal | 5,000 CHF | 1,111,111 |
+| Straight flush | 50 CHF | 3,220 |
+| Four-of-a-kind | 40 CHF | 592 |
+| Full house | 30 CHF | 39 |
 
 ### Blackjack Progressive
 - Side bet: 5 CHF
@@ -27,54 +27,63 @@ A Python-based analysis toolkit for simulating and analyzing the fair value of t
 - First two cards of player and dealer determine outcome
 
 **Payout Table:**
-| Player's hand | Dealer's hand | Payout |
-|--------------|---------------|---------|
-| Suited A/J | Suited A/J | Major jackpot |
-| Suited A/J | Off-suited A/J | Minor jackpot |
-| Suited A/J | - | 350 CHF |
-| Same color A/J | - | 250 CHF |
-| Any A/J | - | 100 CHF |
-| Blackjack | - | 25 CHF |
+| Player's hand | Dealer's hand | Payout | Frequency (1 in X hands) |
+|--------------|---------------|---------|------------------------|
+| Suited A/J | Suited A/J | Major Progressive | 117,647 |
+| Suited A/J | Off-suited A/J | Minor Progressive | 39,683 |
+| Suited A/J | - | 350 CHF | - |
+| Same color A/J | - | 250 CHF | - |
+| Any A/J | - | 100 CHF | - |
+| Blackjack | - | 25 CHF | - |
+
+## Simulation Features
+
+### Core Features
+- Simulates 10 million hands for each game type
+- Processes hands in chunks of 100,000 for memory efficiency
+- Tracks exact hand number for each progressive hit
+- Calculates wait times between hits
+- Records longest drought periods
+- Generates comprehensive statistical analysis
+
+### Analysis Outputs
+- Hit frequencies and distributions
+- Wait time statistics (min, max, average, standard deviation)
+- Percentile analysis (25th, 50th, 75th, 90th, 95th, 99th)
+- Drought period analysis
+- Running hit rates by chunk
+- Detailed CSV reports with timestamped results
+
+### Visualization
+- Time series plots of hits per chunk
+- Wait time distribution histograms
+- Statistical summary boxes
+- Separate visualizations for rare and common hands
+- High-resolution PNG output with publication-quality formatting
 
 ## Project Structure
 
 ```
 zurich_casino_progressives_analysis/
 ├── blackjack/
-│   ├── blackjack_simulation.py
-│   ├── plot_results.py
-│   └── blackjack_results_*.csv
+│   ├── blackjack_simulation.py   # Blackjack simulation logic
+│   ├── plot_results.py          # Blackjack visualization
+│   └── blackjack_results_*.csv  # Timestamped results
 ├── ultimate_texas_holdem/
-│   ├── ultimate_holdem_simulation.py
-│   ├── plot_results.py
-│   └── ultimate_holdem_results_*.csv
+│   ├── ultimate_holdem_simulation.py   # UTH simulation logic
+│   ├── plot_results.py                # UTH visualization
+│   └── ultimate_holdem_results_*.csv  # Timestamped results
 └── README.md
 ```
-
-## Features
-
-- **Ultimate Texas Hold'em Analysis**
-  - Simulates poker hand combinations across 100M hands
-  - Detects royal flushes, straight flushes, four of a kind, and full houses
-  - Calculates probabilities and fair payouts to determine profitable jackpot thresholds
-  - Generates detailed CSV reports with simulation results
-  - Example results and visualizations included
-
-- **Blackjack Progressive Analysis**
-  - Simulates blackjack hands with progressive side bets across 100M hands
-  - Tracks major and minor progressive hit frequencies as well as fixed payouts
-  - Calculates expected value based on current jackpot amounts
-  - Generates statistical analysis and visualizations
-  - Example results and visualizations included
 
 ## Requirements
 
 - Python 3.8+
 - Required packages:
+  - numpy
   - pandas
   - matplotlib
   - seaborn
-  - numpy
 
 ## Installation
 
@@ -86,12 +95,12 @@ cd zurich_casino_progressives_analysis
 
 2. Install required packages:
 ```bash
-pip install pandas matplotlib seaborn numpy
+pip install numpy pandas matplotlib seaborn
 ```
 
 ## Usage
 
-### Ultimate Texas Hold'em Simulation
+### Running Simulations
 
 Run the Ultimate Texas Hold'em simulation:
 ```bash
@@ -99,28 +108,38 @@ cd ultimate_texas_holdem
 python ultimate_holdem_simulation.py
 ```
 
-The simulation will generate a CSV file with results in the format `ultimate_holdem_results_YYYYMMDD_HHMMSS.csv`.
-
-### Blackjack Progressive Analysis
-
 Run the Blackjack simulation:
 ```bash
 cd blackjack
 python blackjack_simulation.py
 ```
 
-To visualize the results:
+### Generating Visualizations
+
+For Ultimate Texas Hold'em:
 ```bash
+cd ultimate_texas_holdem
 python plot_results.py
 ```
 
-## Data Analysis
+For Blackjack:
+```bash
+cd blackjack
+python plot_results.py
+```
 
-The project includes visualization scripts that generate plots and statistical analyses of the simulation results. These visualizations help in understanding:
-- Hit frequencies for different hand combinations
-- Progressive jackpot growth patterns
-- Fair payout calculations
-- Statistical distribution of winning hands
+### Output Files
+
+Each simulation generates:
+1. A timestamped CSV file with detailed results (`*_results_YYYYMMDD_HHMMSS.csv`)
+2. A high-resolution plot (`*_analysis.png`)
+
+The CSV files contain:
+- Summary statistics
+- Hit frequencies
+- Wait time statistics
+- Complete wait time logs
+- Chunk-by-chunk results
 
 ## Contributing
 

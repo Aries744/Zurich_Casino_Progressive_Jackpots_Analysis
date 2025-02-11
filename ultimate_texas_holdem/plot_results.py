@@ -2,6 +2,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
+import sys
+import os
 
 # Set style for better looking plots
 plt.style.use('seaborn-v0_8-darkgrid')
@@ -16,103 +18,160 @@ plt.rcParams['ytick.labelsize'] = 10
 
 # Custom color palette
 colors = {
-    'royal': '#8B0000',  # Dark red for royal flush
-    'box_color': '#A5A5A5'  # Gray
+    'royal': '#2E86AB',      # Blue
+    'community': '#F6511D',  # Orange
+    'straight': '#7FB800',   # Green
+    'four': '#FFB400',       # Yellow
+    'full': '#A239CA'        # Purple
 }
 
-# Read the CSV file - skip to the chunk results section
+def get_color_key(hand_type: str) -> str:
+    """Get the color key for a hand type."""
+    if 'Royal Flush' in hand_type:
+        return 'royal'
+    elif 'Community Royal' in hand_type:
+        return 'community'
+    elif 'Straight Flush' in hand_type:
+        return 'straight'
+    elif 'Four Of A Kind' in hand_type:
+        return 'four'
+    else:  # Full House
+        return 'full'
+
 def process_latest_csv():
+    """Get the most recent results file."""
     import glob
     import os
-    # Get the most recent results file
     list_of_files = glob.glob('ultimate_holdem_results_*.csv')
     latest_file = max(list_of_files, key=os.path.getctime)
-    return latest_file, pd.read_csv(latest_file, skiprows=11)
+    
+    # Read different sections of the CSV
+    chunk_data = None
+    wait_time_stats = None
+    wait_times = {
+        'royal_flush': [],
+        'community_royal': [],
+        'straight_flush': [],
+        'four_of_a_kind': [],
+        'full_house': []
+    }
+    
+    with open(latest_file, 'r') as f:
+        lines = f.readlines()
+        
+        # Find the chunk results section
+        for i, line in enumerate(lines):
+            if 'Chunk Results' in line:
+                chunk_data = pd.read_csv(latest_file, skiprows=i+1)
+                break
+        
+        # Find the wait time statistics section
+        for i, line in enumerate(lines):
+            if 'Wait Time Statistics' in line:
+                wait_time_stats = pd.read_csv(latest_file, skiprows=i+1, nrows=6, thousands=',')
+                break
+                
+        # Find and parse wait times
+        for i, line in enumerate(lines):
+            if 'Wait Times Log' in line:
+                for j, hand_type in enumerate(['Royal Flush', 'Community Royal', 'Straight Flush', 'Four of a Kind', 'Full House']):
+                    line = lines[i+1+j].strip()
+                    times = [int(x.strip()) for x in line.split(',')[1:] if x.strip()]
+                    wait_times[hand_type.lower().replace(' ', '_')] = times
+                break
+    
+    return latest_file, chunk_data, wait_time_stats, wait_times
 
-latest_file, chunk_data = process_latest_csv()
+def main():
+    # Read the CSV file
+    latest_file, chunk_data, wait_time_stats, wait_times = process_latest_csv()
+    
+    # Create figure
+    fig = plt.figure(figsize=(16, 12))
+    gs = plt.GridSpec(2, 2, figure=fig)
+    fig.suptitle('Ultimate Texas Hold\'em Progressive Analysis', 
+                 fontsize=14, y=0.95, fontweight='bold')
+    
+    # Progressive Hits Time Series
+    ax1 = fig.add_subplot(gs[0, 0])
+    hand_types = ['Royal Flush', 'Community Royal', 'Straight Flush', 'Four Of A Kind', 'Full House']
+    for hand_type in hand_types:
+        col_name = hand_type
+        color_key = get_color_key(hand_type)
+        ax1.plot(chunk_data['Chunk'], chunk_data[col_name], '-o', 
+                color=colors[color_key], label=hand_type, 
+                linewidth=2, markersize=6)
+    ax1.set_title('Hand Type Hits by Chunk', pad=10)
+    ax1.set_xlabel('Chunk Number (100K hands each)')
+    ax1.set_ylabel('Number of Hits')
+    ax1.legend(frameon=True, facecolor='white', framealpha=1)
+    ax1.grid(True, alpha=0.3)
+    
+    # Wait Time Distributions - Royal Flush and Community Royal
+    ax2 = fig.add_subplot(gs[0, 1])
+    for hand_type in ['royal_flush', 'community_royal']:
+        if len(wait_times[hand_type]) > 1:
+            sns.histplot(data=wait_times[hand_type], 
+                        color=colors[get_color_key(hand_type)], alpha=0.6,
+                        label=f"{hand_type.replace('_', ' ').title()} (n={len(wait_times[hand_type])})",
+                        stat='density', bins=min(20, len(wait_times[hand_type])), ax=ax2)
+    ax2.set_title('Royal Flush Wait Time Distributions', pad=10)
+    ax2.set_xlabel('Wait Time (hands)')
+    ax2.set_ylabel('Density')
+    if all(len(wait_times[t]) <= 1 for t in ['royal_flush', 'community_royal']):
+        ax2.text(0.5, 0.5, 'Insufficient wait time data\nfor distribution plot',
+                 ha='center', va='center', transform=ax2.transAxes)
+    else:
+        ax2.legend(frameon=True, facecolor='white', framealpha=1)
+    ax2.grid(True, alpha=0.3)
+    
+    # Wait Time Distributions - Other Hands
+    ax3 = fig.add_subplot(gs[1, 0])
+    for hand_type in ['straight_flush', 'four_of_a_kind', 'full_house']:
+        if len(wait_times[hand_type]) > 1:
+            sns.histplot(data=wait_times[hand_type],
+                        color=colors[get_color_key(hand_type)], alpha=0.6,
+                        label=f"{hand_type.replace('_', ' ').title()} (n={len(wait_times[hand_type])})",
+                        stat='density', bins=min(20, len(wait_times[hand_type])), ax=ax3)
+    ax3.set_title('Other Hand Types Wait Time Distributions', pad=10)
+    ax3.set_xlabel('Wait Time (hands)')
+    ax3.set_ylabel('Density')
+    if all(len(wait_times[t]) <= 1 for t in ['straight_flush', 'four_of_a_kind', 'full_house']):
+        ax3.text(0.5, 0.5, 'Insufficient wait time data\nfor distribution plot',
+                 ha='center', va='center', transform=ax3.transAxes)
+    else:
+        ax3.legend(frameon=True, facecolor='white', framealpha=1)
+    ax3.grid(True, alpha=0.3)
+    
+    # Statistics text box
+    stats_text = "Wait Time Statistics (hands)\n\n"
+    for hand_type in hand_types:
+        key = hand_type.lower().replace(' ', '_')
+        stats_text += (
+            f"{hand_type} (n={len(wait_times[key])})\n"
+            f"Min Wait: {wait_time_stats.iloc[hand_types.index(hand_type)]['Min Wait']}\n"
+            f"Max Wait: {wait_time_stats.iloc[hand_types.index(hand_type)]['Max Wait']}\n"
+            f"Mean Wait: {wait_time_stats.iloc[hand_types.index(hand_type)]['Mean Wait']}\n"
+            f"Std Dev: {wait_time_stats.iloc[hand_types.index(hand_type)]['Std Dev']}\n\n"
+            "Percentiles:\n"
+            f"50th (Median): {wait_time_stats.iloc[hand_types.index(hand_type)]['50th']}\n"
+            f"90th: {wait_time_stats.iloc[hand_types.index(hand_type)]['90th']}\n"
+            f"95th: {wait_time_stats.iloc[hand_types.index(hand_type)]['95th']}\n"
+            f"99th: {wait_time_stats.iloc[hand_types.index(hand_type)]['99th']}\n\n"
+        )
+    
+    # Add text box for statistics
+    props = dict(boxstyle='round', facecolor='white', alpha=0.9)
+    fig.text(0.98, 0.50, stats_text, fontsize=10,
+             bbox=props, family='monospace', va='center', ha='right')
+    
+    # Adjust layout
+    plt.tight_layout(rect=[0, 0.03, 0.95, 0.95])
+    plt.savefig('ultimate_holdem_analysis.png', dpi=300, bbox_inches='tight',
+                facecolor='white', edgecolor='none')
+    plt.close()
+    
+    print("Plot saved as ultimate_holdem_analysis.png")
 
-# Calculate statistics
-hands_per_chunk = 1_000_000
-royal_freq = hands_per_chunk / chunk_data['Royal Flush Hits']
-exp_royal_wait = royal_freq.mean()
-royal_ci = np.percentile(royal_freq, [2.5, 97.5])
-
-# Calculate session-based statistics
-hands_per_session = 20 * 3  # 20 hands/hour * 3 hours
-sessions_for_royal = exp_royal_wait / hands_per_session
-
-# Calculate confidence intervals in terms of sessions
-royal_sessions_ci = [ci / hands_per_session for ci in royal_ci]
-
-# Create figure
-fig = plt.figure(figsize=(16, 8))
-gs = plt.GridSpec(2, 2, figure=fig)
-fig.suptitle('Ultimate Texas Hold\'em Royal Flush Analysis\n10 Million Hands Simulation', 
-             fontsize=14, y=0.95, fontweight='bold')
-
-# Royal Flush Distribution
-ax1 = fig.add_subplot(gs[0, 0])
-sns.boxplot(data=chunk_data[['Royal Flush Hits']], ax=ax1,
-            color=colors['royal'])
-ax1.set_title('Royal Flush Hits\nper 1M Hands', pad=10)
-ax1.set_ylabel('Number of Hits')
-ax1.grid(True, alpha=0.3)
-
-# Royal Flush Time Series
-ax2 = fig.add_subplot(gs[0, 1])
-ax2.plot(chunk_data['Chunk'], chunk_data['Royal Flush Hits'], '-o', 
-         color=colors['royal'], linewidth=2, markersize=6)
-ax2.set_title('Royal Flush Hits by Chunk', pad=10)
-ax2.set_xlabel('Chunk Number (1M hands each)')
-ax2.set_ylabel('Number of Hits')
-ax2.grid(True, alpha=0.3)
-
-# Statistics text box
-stats_text = (
-    "Playing Pattern:\n"
-    "• 20 hands per hour\n"
-    "• 3 hour sessions\n"
-    "• 60 hands per session\n\n"
-    "Royal Flush Statistics\n"
-    f"Expected wait: 1 in {exp_royal_wait:,.0f} hands\n"
-    f"Number of sessions: {sessions_for_royal:,.1f}\n"
-    f"95% CI: [{royal_sessions_ci[0]:,.1f} to {royal_sessions_ci[1]:,.1f}] sessions\n\n"
-    "Time to Hit (1 session/week):\n"
-    f"Expected: {sessions_for_royal/52:.1f} years\n"
-    f"95% CI: [{royal_sessions_ci[0]/52:.1f} to {royal_sessions_ci[1]/52:.1f}] years\n\n"
-    "Time to Hit (2 sessions/week):\n"
-    f"Expected: {sessions_for_royal/104:.1f} years\n"
-    f"95% CI: [{royal_sessions_ci[0]/104:.1f} to {royal_sessions_ci[1]/104:.1f}] years\n\n"
-    "Time to Hit (1 session/day):\n"
-    f"Expected: {sessions_for_royal/365:.1f} years\n"
-    f"95% CI: [{royal_sessions_ci[0]/365:.1f} to {royal_sessions_ci[1]/365:.1f}] years"
-)
-
-# Add text box for statistics
-props = dict(boxstyle='round', facecolor='white', alpha=0.9)
-fig.text(0.55, 0.45, stats_text, fontsize=10, 
-         bbox=props, family='monospace', va='center')
-
-# Adjust layout
-plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-plt.savefig('ultimate_holdem_distributions.png', dpi=300, bbox_inches='tight', 
-            facecolor='white', edgecolor='none')
-plt.close()
-
-# Print statistics to console
-print("\nDetailed Session Statistics:")
-print("\nPlaying Pattern:")
-print("• 20 hands per hour")
-print("• 3 hour sessions")
-print("• 60 hands per session")
-
-print(f"\nRoyal Flush:")
-print(f"Expected wait: 1 in {exp_royal_wait:,.0f} hands")
-print(f"95% CI: 1 in {royal_ci[0]:,.0f} to 1 in {royal_ci[1]:,.0f} hands")
-print(f"\nExpected sessions until hit: {sessions_for_royal:,.1f}")
-print(f"95% CI: [{royal_sessions_ci[0]:,.1f} to {royal_sessions_ci[1]:,.1f}] sessions")
-
-print("\nTime to Hit:")
-print(f"At 1 session/week: {sessions_for_royal/52:.1f} years")
-print(f"At 2 sessions/week: {sessions_for_royal/104:.1f} years")
-print(f"At 1 session/day: {sessions_for_royal/365:.1f} years") 
+if __name__ == '__main__':
+    main() 

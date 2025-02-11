@@ -1,9 +1,12 @@
 import random
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import List, Set, Tuple
+from typing import List, Set, Tuple, Dict
 import csv
 from datetime import datetime
+import sys
+import os
+import numpy as np
 
 @dataclass(frozen=True)
 class Card:
@@ -126,13 +129,30 @@ def is_full_house(cards: List[Card]) -> bool:
     counts = sorted(rank_counts.values(), reverse=True)
     return len(counts) >= 2 and counts[0] >= 3 and counts[1] >= 2
 
-def simulate_hands(num_hands: int) -> dict:
+def simulate_hands(num_hands: int, start_hand: int = 0, last_hits: Dict[str, int] = None) -> tuple[dict, dict, Dict[str, int]]:
+    if last_hits is None:
+        last_hits = {
+            'royal_flush': 0,
+            'community_royal': 0,
+            'straight_flush': 0,
+            'four_of_a_kind': 0,
+            'full_house': 0
+        }
+    
     results = defaultdict(int)
+    wait_times = {
+        'royal_flush': [],
+        'community_royal': [],
+        'straight_flush': [],
+        'four_of_a_kind': [],
+        'full_house': []
+    }
+    
     deck = Deck()
     
-    for i in range(num_hands):
-        if i % 1_000_000 == 0:  # Print progress less frequently
-            print(f"Progress: {i/num_hands*100:.1f}% complete...")
+    for i in range(start_hand, start_hand + num_hands):
+        if (i - start_hand) % 1_000_000 == 0:  # Print progress less frequently
+            print(f"Progress: {(i - start_hand)/num_hands*100:.1f}% complete...")
             
         # Reset and shuffle deck
         deck.reset()
@@ -146,27 +166,38 @@ def simulate_hands(num_hands: int) -> dict:
         # Check for all possible hands using all 7 cards
         all_cards = hole_cards + community_cards
         
-        # Check for royal flush (highest priority)
+        # Check for hands in order of priority
         if is_royal_flush(all_cards):
             results['royal_flush'] += 1
-        # Check for community royal (second priority)
+            if last_hits['royal_flush'] > 0:
+                wait_times['royal_flush'].append(i - last_hits['royal_flush'])
+            last_hits['royal_flush'] = i
         elif is_community_royal(community_cards):
             results['community_royal'] += 1
-        # Check for straight flush (third priority)
+            if last_hits['community_royal'] > 0:
+                wait_times['community_royal'].append(i - last_hits['community_royal'])
+            last_hits['community_royal'] = i
         elif is_straight_flush(all_cards):
             results['straight_flush'] += 1
-        # Check for four of a kind (fourth priority)
+            if last_hits['straight_flush'] > 0:
+                wait_times['straight_flush'].append(i - last_hits['straight_flush'])
+            last_hits['straight_flush'] = i
         elif is_four_of_a_kind(all_cards):
             results['four_of_a_kind'] += 1
-        # Check for full house (fifth priority)
+            if last_hits['four_of_a_kind'] > 0:
+                wait_times['four_of_a_kind'].append(i - last_hits['four_of_a_kind'])
+            last_hits['four_of_a_kind'] = i
         elif is_full_house(all_cards):
             results['full_house'] += 1
-        
+            if last_hits['full_house'] > 0:
+                wait_times['full_house'].append(i - last_hits['full_house'])
+            last_hits['full_house'] = i
+    
     results['total_hands'] = num_hands
-    return results
+    return results, wait_times, last_hits
 
-def calculate_fair_payouts(results: dict) -> float:
-    """Calculate fair progressive payout for 5 CHF bet."""
+def calculate_fair_payouts(results: dict) -> tuple:
+    """Calculate fair progressive payouts for 5 CHF bet."""
     total_hands = results['total_hands']
     bet_amount = 5  # CHF
     
@@ -175,35 +206,50 @@ def calculate_fair_payouts(results: dict) -> float:
     
     # Calculate fixed payouts
     fixed_payouts = (
-        results['community_royal'] * 5000 +  # Community Royal pays 5,000
-        results['straight_flush'] * 1500 +   # Straight Flush pays 1,500
-        results['four_of_a_kind'] * 500 +    # Four of a Kind pays 500
-        results['full_house'] * 50           # Full House pays 50
+        results['community_royal'] * 5000 +  # Community Royal is fixed at 5000 CHF
+        results['straight_flush'] * 50 +
+        results['four_of_a_kind'] * 40 +
+        results['full_house'] * 30
     )
     
-    # Calculate frequency
+    # Remaining amount that needs to be covered by progressives
+    remaining = total_bet - fixed_payouts
+    
     royal_hits = results['royal_flush']
     
     if royal_hits == 0:
         return 0
     
-    # Remaining amount that needs to be covered by progressive
-    remaining = total_bet - fixed_payouts
+    # Only royal flush is progressive now
+    royal_payout = remaining / royal_hits
     
-    # Fair progressive payout would be remaining / number_of_hits
-    fair_payout = remaining / royal_hits
-    
-    return fair_payout
+    return royal_payout, 5000  # Return fixed community payout
 
 def main():
-    NUM_HANDS = 100_000_000  # 100 million hands
-    CHUNK_SIZE = 1_000_000   # Process in chunks of 1M for memory efficiency
+    NUM_HANDS = 10_000_000  # 10 million hands
+    CHUNK_SIZE = 100_000   # Process in chunks of 100K for memory efficiency
     
     print(f"Running simulation for {NUM_HANDS:,} hands...")
     
     # Initialize aggregate results
     total_results = defaultdict(int)
     chunk_results = []
+    all_wait_times = {
+        'royal_flush': [],
+        'community_royal': [],
+        'straight_flush': [],
+        'four_of_a_kind': [],
+        'full_house': []
+    }
+    
+    # Track last hits across chunks
+    last_hits = {
+        'royal_flush': 0,
+        'community_royal': 0,
+        'straight_flush': 0,
+        'four_of_a_kind': 0,
+        'full_house': 0
+    }
     
     try:
         # Process in chunks
@@ -213,25 +259,26 @@ def main():
                 print(f"\nProcessing chunk {chunk + 1}/{num_chunks}")
                 print(f"Total hands processed so far: {chunk * CHUNK_SIZE:,}")
                 
-                results = simulate_hands(CHUNK_SIZE)
+                start_hand = chunk * CHUNK_SIZE
+                results, wait_times, last_hits = simulate_hands(CHUNK_SIZE, start_hand, last_hits)
                 
                 # Store chunk results
                 results['chunk'] = chunk + 1
                 chunk_results.append(results.copy())
                 
-                # Aggregate results
+                # Aggregate results and wait times
                 for key in results:
                     if key != 'chunk' and key != 'total_hands':
                         total_results[key] += results[key]
                 
+                for hand_type in wait_times:
+                    all_wait_times[hand_type].extend(wait_times[hand_type])
+                
                 # Print intermediate results every 10 chunks
                 if (chunk + 1) % 10 == 0:
                     print("\nIntermediate results after", (chunk + 1), "chunks:")
-                    print(f"Royal Flush hits: {total_results['royal_flush']:,}")
-                    print(f"Community Royal hits: {total_results['community_royal']:,}")
-                    print(f"Straight Flush hits: {total_results['straight_flush']:,}")
-                    print(f"Four of a Kind hits: {total_results['four_of_a_kind']:,}")
-                    print(f"Full House hits: {total_results['full_house']:,}")
+                    for hand_type in ['royal_flush', 'community_royal', 'straight_flush', 'four_of_a_kind', 'full_house']:
+                        print(f"{hand_type.replace('_', ' ').title()}: {total_results[hand_type]:,} hits")
                     
             except Exception as e:
                 print(f"\nError processing chunk {chunk + 1}: {str(e)}")
@@ -239,34 +286,29 @@ def main():
         
         total_results['total_hands'] = NUM_HANDS
         
-        # Calculate total bet and payouts
-        total_bet = NUM_HANDS * 5
-        community_royal_paid = total_results['community_royal'] * 5000
-        straight_flush_paid = total_results['straight_flush'] * 1500
-        four_kind_paid = total_results['four_of_a_kind'] * 500
-        full_house_paid = total_results['full_house'] * 50
-        total_fixed = community_royal_paid + straight_flush_paid + four_kind_paid + full_house_paid
+        # Calculate wait time statistics for each hand type
+        wait_stats = {}
+        for hand_type in all_wait_times:
+            if all_wait_times[hand_type]:
+                wait_stats[hand_type] = {
+                    'min': min(all_wait_times[hand_type]),
+                    'max': max(all_wait_times[hand_type]),
+                    'mean': np.mean(all_wait_times[hand_type]),
+                    'std': np.std(all_wait_times[hand_type]),
+                    'percentiles': np.percentile(all_wait_times[hand_type], [25, 50, 75, 90, 95, 99])
+                }
+            else:
+                wait_stats[hand_type] = {
+                    'min': 0, 'max': 0, 'mean': 0, 'std': 0,
+                    'percentiles': [0] * 6
+                }
         
-        fair_payout = calculate_fair_payouts(total_results)
-        
-        print("\nFinal Results:")
-        print(f"Total Hands: {total_results['total_hands']:,}")
-        print(f"\nHand Frequencies:")
-        print(f"Royal Flush: {total_results['royal_flush']:,} hits (1 in {NUM_HANDS/total_results['royal_flush']:,.0f})")
-        print(f"Community Royal: {total_results['community_royal']:,} hits (1 in {NUM_HANDS/total_results['community_royal']:,.0f})")
-        print(f"Straight Flush: {total_results['straight_flush']:,} hits (1 in {NUM_HANDS/total_results['straight_flush']:,.0f})")
-        print(f"Four of a Kind: {total_results['four_of_a_kind']:,} hits (1 in {NUM_HANDS/total_results['four_of_a_kind']:,.0f})")
-        print(f"Full House: {total_results['full_house']:,} hits (1 in {NUM_HANDS/total_results['full_house']:,.0f})")
-        
-        print(f"\nPayout Analysis:")
-        print(f"Total Amount Bet: {total_bet:,.2f} CHF")
-        print(f"Fixed Payouts Paid: {total_fixed:,.2f} CHF")
-        print(f"Remaining for Progressive: {total_bet - total_fixed:,.2f} CHF")
-        print(f"\nFair Progressive Value: {fair_payout:,.2f} CHF")
+        # Calculate fair payouts
+        royal_payout, community_payout = calculate_fair_payouts(total_results)
         
         # Save results to CSV
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"ultimate_texas_holdem/ultimate_holdem_results_{timestamp}.csv"
+        filename = os.path.join(os.path.dirname(__file__), f"ultimate_holdem_results_{timestamp}.csv")
         
         with open(filename, 'w', newline='') as f:
             writer = csv.writer(f)
@@ -274,62 +316,81 @@ def main():
             # Write summary
             writer.writerow(['Summary Statistics'])
             writer.writerow(['Total Hands', NUM_HANDS])
-            writer.writerow(['Total Bet', f"{total_bet:,.2f}"])
+            writer.writerow(['Total Bet', NUM_HANDS * 5])
+            writer.writerow([''])
+            
+            # Write payout analysis
+            writer.writerow(['Payout Information'])
+            writer.writerow(['Fixed Payouts'])
+            community_royal_payout = total_results['community_royal'] * 5000
+            straight_flush_payout = total_results['straight_flush'] * 50
+            four_kind_payout = total_results['four_of_a_kind'] * 40
+            full_house_payout = total_results['full_house'] * 30
+            total_fixed = community_royal_payout + straight_flush_payout + four_kind_payout + full_house_payout
+            
+            writer.writerow(['Community Royal (5000 CHF)', f"{community_royal_payout:,.0f}"])
+            writer.writerow(['Straight Flush (50 CHF)', f"{straight_flush_payout:,.0f}"])
+            writer.writerow(['Four of a Kind (40 CHF)', f"{four_kind_payout:,.0f}"])
+            writer.writerow(['Full House (30 CHF)', f"{full_house_payout:,.0f}"])
+            writer.writerow(['Total Fixed Payouts', f"{total_fixed:,.0f}"])
+            writer.writerow([''])
+            
+            writer.writerow(['Progressive Information'])
+            remaining = NUM_HANDS * 5 - total_fixed
+            writer.writerow(['Remaining to Cover', f"{remaining:,.0f}"])
+            writer.writerow(['Royal Progressive Payout', f"CHF {royal_payout:,.2f}"])
             writer.writerow([''])
             
             # Write frequencies
-            writer.writerow(['Hand Type', 'Hits', 'Frequency', '1 in X hands'])
-            writer.writerow(['Royal Flush', total_results['royal_flush'], 
-                           f"{total_results['royal_flush']/NUM_HANDS*100:.6f}%",
-                           f"1 in {NUM_HANDS/total_results['royal_flush']:,.0f}"])
-            writer.writerow(['Community Royal', total_results['community_royal'],
-                           f"{total_results['community_royal']/NUM_HANDS*100:.6f}%",
-                           f"1 in {NUM_HANDS/total_results['community_royal']:,.0f}"])
-            writer.writerow(['Straight Flush', total_results['straight_flush'],
-                           f"{total_results['straight_flush']/NUM_HANDS*100:.6f}%",
-                           f"1 in {NUM_HANDS/total_results['straight_flush']:,.0f}"])
-            writer.writerow(['Four of a Kind', total_results['four_of_a_kind'],
-                           f"{total_results['four_of_a_kind']/NUM_HANDS*100:.6f}%",
-                           f"1 in {NUM_HANDS/total_results['four_of_a_kind']:,.0f}"])
-            writer.writerow(['Full House', total_results['full_house'],
-                           f"{total_results['full_house']/NUM_HANDS*100:.6f}%",
-                           f"1 in {NUM_HANDS/total_results['full_house']:,.0f}"])
+            writer.writerow(['Win Type', 'Hits', 'Frequency', '1 in X hands'])
+            for hand_type in ['royal_flush', 'community_royal', 'straight_flush', 'four_of_a_kind', 'full_house']:
+                hits = total_results[hand_type]
+                writer.writerow([
+                    hand_type.replace('_', ' ').title(),
+                    hits,
+                    f"{hits/NUM_HANDS*100:.6f}%",
+                    f"1 in {NUM_HANDS/hits:,.0f}" if hits > 0 else "N/A"
+                ])
             writer.writerow([''])
             
-            # Write payout information
-            writer.writerow(['Payout Information'])
-            writer.writerow(['Fixed Payouts'])
-            writer.writerow(['Community Royal (5,000 CHF)', f"{community_royal_paid:,.2f}"])
-            writer.writerow(['Straight Flush (1,500 CHF)', f"{straight_flush_paid:,.2f}"])
-            writer.writerow(['Four of a Kind (500 CHF)', f"{four_kind_paid:,.2f}"])
-            writer.writerow(['Full House (50 CHF)', f"{full_house_paid:,.2f}"])
-            writer.writerow(['Total Fixed Payouts', f"{total_fixed:,.2f}"])
+            # Write wait time statistics
+            writer.writerow(['Wait Time Statistics'])
+            writer.writerow(['Hand Type', 'Min Wait', 'Max Wait', 'Mean Wait', 'Std Dev', '25th', '50th', '75th', '90th', '95th', '99th'])
+            for hand_type in wait_stats:
+                stats = wait_stats[hand_type]
+                writer.writerow([
+                    hand_type.replace('_', ' ').title(),
+                    f"{stats['min']:,}",
+                    f"{stats['max']:,}",
+                    f"{stats['mean']:,.1f}",
+                    f"{stats['std']:,.1f}",
+                    f"{stats['percentiles'][0]:,.0f}",
+                    f"{stats['percentiles'][1]:,.0f}",
+                    f"{stats['percentiles'][2]:,.0f}",
+                    f"{stats['percentiles'][3]:,.0f}",
+                    f"{stats['percentiles'][4]:,.0f}",
+                    f"{stats['percentiles'][5]:,.0f}"
+                ])
             writer.writerow([''])
             
-            # Write progressive information
-            writer.writerow(['Progressive Information'])
-            writer.writerow(['Remaining to Cover', f"{total_bet - total_fixed:,.2f}"])
-            writer.writerow(['Fair Progressive Value', f"{fair_payout:,.2f}"])
+            # Write wait times log
+            writer.writerow(['Wait Times Log'])
+            for hand_type in all_wait_times:
+                writer.writerow([hand_type.replace('_', ' ').title()] + [str(x) for x in all_wait_times[hand_type]])
             writer.writerow([''])
             
             # Write chunk data
             writer.writerow(['Chunk Results'])
-            writer.writerow(['Chunk', 'Royal Flush', 'Community Royal', 'Straight Flush', 'Four of a Kind', 'Full House'])
+            writer.writerow(['Chunk'] + [hand_type.replace('_', ' ').title() for hand_type in ['royal_flush', 'community_royal', 'straight_flush', 'four_of_a_kind', 'full_house']])
             for chunk in chunk_results:
                 writer.writerow([
-                    chunk['chunk'],
-                    chunk['royal_flush'],
-                    chunk['community_royal'],
-                    chunk['straight_flush'],
-                    chunk['four_of_a_kind'],
-                    chunk['full_house']
+                    chunk['chunk']] + [chunk[hand_type] for hand_type in ['royal_flush', 'community_royal', 'straight_flush', 'four_of_a_kind', 'full_house']
                 ])
         
         print(f"\nResults saved to {filename}")
-        
     except Exception as e:
         print(f"\nError in main(): {str(e)}")
         raise
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main() 
