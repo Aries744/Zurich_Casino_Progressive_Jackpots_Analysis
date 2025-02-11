@@ -19,6 +19,8 @@ A Python-based analysis toolkit for simulating and analyzing the fair value of t
 | Four-of-a-kind | 40 CHF | 592 |
 | Full house | 30 CHF | 39 |
 
+Based on simulation results with 10 million hands, the Royal Progressive side bet becomes profitable when the progressive jackpot reaches **4,593,560 CHF**.
+
 ### Blackjack Progressive
 - Side bet: 5 CHF
 - Networked across all Swiss Casinos locations
@@ -35,6 +37,10 @@ A Python-based analysis toolkit for simulating and analyzing the fair value of t
 | Same color A/J | - | 250 CHF | 353 |
 | Any A/J | - | 100 CHF | 178 |
 | Blackjack | - | 25 CHF | 29 |
+
+Based on simulation results with 10 million hands, the progressive side bet becomes profitable when:
+- Major Progressive (Suited A/J vs Suited A/J) reaches **110,834 CHF**
+- Minor Progressive (Suited A/J vs Off-suited A/J) reaches **37,385 CHF**
 
 ## Simulation Features
 
