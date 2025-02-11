@@ -36,6 +36,13 @@ wheels/
 ehthumbs.db
 Thumbs.db
 
-# Project specific
+# Include only specific result files as examples
+# Exclude all CSVs and PNGs by default
 *.png
-*.csv 
+*.csv
+
+# But include these specific examples
+!blackjack/blackjack_results_20250203_184049.csv
+!blackjack/blackjack_distributions.png
+!ultimate_texas_holdem/ultimate_holdem_results_20250205_110804.csv
+!ultimate_texas_holdem/ultimate_holdem_distributions.png 

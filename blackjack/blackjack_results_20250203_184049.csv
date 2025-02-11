@@ -1,0 +1,38 @@
+Summary Statistics
+Total Hands,100000000
+Total Bet,500000000
+""
+Win Type,Hits,Frequency,1 in X hands
+Major Progressive,872,0.000872%,"1 in 114,679"
+Minor Progressive,2442,0.002442%,"1 in 40,950"
+Suited A/J,282500,0.282500%,1 in 354
+Colored A/J,283325,0.283325%,1 in 353
+Mixed A/J,567012,0.567012%,1 in 176
+Other BJ,3399408,3.399408%,1 in 29
+""
+Payout Information
+Fixed Payouts
+Suited A/J (350 CHF),98875000
+Colored A/J (250 CHF),70831250
+Mixed A/J (100 CHF),56701200
+Other BJ (25 CHF),84985200
+Total Fixed Payouts,311392650
+""
+Progressive Information
+Remaining to Cover,188607350
+Major/Minor Hit Ratio,2.8005
+Major Progressive Payout,"108,146.42"
+Minor Progressive Payout,"38,617.39"
+""
+Chunk Results
+Chunk,Major Hits,Minor Hits,Suited A/J,Colored A/J,Mixed A/J,Other BJ
+1,90,232,28305,28122,56527,339755
+2,94,247,28052,28466,56396,340342
+3,83,252,28176,28318,56881,340300
+4,78,238,28140,28441,56616,339880
+5,77,225,28235,28365,56565,339394
+6,96,255,28289,28300,56679,339912
+7,100,242,28055,28551,56802,340084
+8,78,254,28242,28264,56574,340205
+9,89,239,28618,28295,57174,339370
+10,87,258,28388,28203,56798,340166
