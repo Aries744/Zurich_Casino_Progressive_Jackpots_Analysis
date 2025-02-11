@@ -80,7 +80,7 @@ zurich_casino_progressives_analysis/
 
 1. Clone this repository:
 ```bash
-git clone https://github.com/yourusername/zurich_casino_progressives_analysis.git
+git clone https://github.com/Aries744/Zurich_Casino_Progressive_Jackpots_Analysis.git
 cd zurich_casino_progressives_analysis
 ```
 
