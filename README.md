@@ -1,6 +1,40 @@
 # Casino Progressives Analysis
 
-A Python-based analysis toolkit for simulating and analyzing the fair value of the progressive jackpots in Zurich Casino table games. This project currently includes simulations for Ultimate Texas Hold'em and Blackjack progressive side bets, helping to understand the frequency of various winning combinations and calculate fair payouts. Both games are simulated with 100 million hands to ensure statistical significance.
+A Python-based analysis toolkit for simulating and analyzing the fair value of the progressive jackpots in Zurich Casino table games. This project simulates and analyzes the [Swiss Casinos Royal Jackpot](https://www.swisscasinos.ch/en/royal-jackpot) side bets for Ultimate Texas Hold'em and Blackjack to determine at which jackpot values the 5 CHF side bet becomes profitable. Both games are simulated with 100 million hands to ensure statistical significance.
+
+## Royal Jackpot Details
+
+### Ultimate Texas Hold'em Progressive
+- Side bet: 5 CHF
+- Networked across all Swiss Casinos locations (Pfäffikon, St. Gallen, Schaffhausen, Zurich)
+- Must be placed before cards are dealt
+- Base game bet required
+
+**Payout Table:**
+| Hand played | Payout | 
+|-------------|--------|
+| Royal flush | 100% of jackpot |
+| Community royal | 5,000 CHF |
+| Straight flush | 1,500 CHF |
+| Four-of-a-kind | 500 CHF |
+| Full house | 50 CHF |
+
+### Blackjack Progressive
+- Side bet: 5 CHF
+- Networked across all Swiss Casinos locations
+- Must be placed before cards are dealt
+- Base game bet required
+- First two cards of player and dealer determine outcome
+
+**Payout Table:**
+| Player's hand | Dealer's hand | Payout |
+|--------------|---------------|---------|
+| Suited A/J | Suited A/J | Major jackpot |
+| Suited A/J | Off-suited A/J | Minor jackpot |
+| Suited A/J | - | 350 CHF |
+| Same color A/J | - | 250 CHF |
+| Any A/J | - | 100 CHF |
+| Blackjack | - | 25 CHF |
 
 ## Project Structure
 
@@ -22,13 +56,16 @@ zurich_casino_progressives_analysis/
 - **Ultimate Texas Hold'em Analysis**
   - Simulates poker hand combinations across 100M hands
   - Detects royal flushes, straight flushes, four of a kind, and full houses
-  - Calculates probabilities and fair payouts
+  - Calculates probabilities and fair payouts to determine profitable jackpot thresholds
   - Generates detailed CSV reports with simulation results
+  - Example results and visualizations included
 
 - **Blackjack Progressive Analysis**
   - Simulates blackjack hands with progressive side bets across 100M hands
   - Tracks major and minor progressive hit frequencies as well as fixed payouts
+  - Calculates expected value based on current jackpot amounts
   - Generates statistical analysis and visualizations
+  - Example results and visualizations included
 
 ## Requirements
 
